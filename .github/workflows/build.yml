@@ -1,0 +1,90 @@
+name: KiterOS Nano Build & Combine
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  combine-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 2. Setup Python & Node.js
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 3. Combine HTML, CSS, JS & Generate Arduino IDE Sketch
+        run: python3 tools/build/combine_project.py
+
+      - name: 4. Run UZIP Validation Tests
+        run: python3 -m unittest uzip/tests/test_uzip.py
+
+      - name: 5. Install PlatformIO & ESP8266 Core
+        run: |
+          pip install --upgrade platformio
+          pio pkg install --project-dir firmware
+
+      - name: 6. Compile ESP8266 Firmware (.bin)
+        run: pio run --project-dir firmware
+
+      - name: 7. Build 512 KiB LittleFS Filesystem (.bin)
+        run: |
+          MKLITTLEFS=$(find ~/.platformio/packages/tool-mklittlefs -name mklittlefs | head -n 1)
+          "$MKLITTLEFS" -c staging_fs -p 256 -b 8192 -s 524288 firmware/.pio/build/nodemcuv2/littlefs.bin
+
+      - name: 8. Enforce 1 MiB Limit & Package Release Artifacts
+        run: |
+          VERSION=${GITHUB_REF_NAME:-v0.1.0}
+          if [[ ! "$VERSION" =~ ^v ]]; then VERSION="v0.1.0"; fi
+          mkdir -p dist
+          cp firmware/.pio/build/nodemcuv2/firmware.bin "dist/KiterOS-Nano-${VERSION}-firmware.bin"
+          cp firmware/.pio/build/nodemcuv2/littlefs.bin "dist/KiterOS-Nano-${VERSION}-filesystem.bin"
+
+          python3 tools/size_check/check_size.py \
+            "dist/KiterOS-Nano-${VERSION}-firmware.bin" \
+            "dist/KiterOS-Nano-${VERSION}-filesystem.bin" \
+            "dist/KiterOS-Nano-${VERSION}-size-report.txt"
+
+          cd dist
+          zip -r -9 "KiterOS-Nano-${VERSION}-Arduino-IDE-Sketch.zip" Arduino_IDE_Sketch/
+          zip -9 "KiterOS-Nano-${VERSION}-release.zip" \
+            "KiterOS-Nano-${VERSION}-firmware.bin" \
+            "KiterOS-Nano-${VERSION}-filesystem.bin" \
+            "KiterOS-Nano-${VERSION}-Arduino-IDE-Sketch.zip" \
+            "KiterOS-Nano-${VERSION}-size-report.txt"
+          sha256sum KiterOS-Nano-${VERSION}-*.bin KiterOS-Nano-${VERSION}-*.zip > "KiterOS-Nano-${VERSION}-SHA256SUMS.txt"
+
+      - name: 9. Upload Build Artifacts (Download from GitHub Actions Tab)
+        uses: actions/upload-artifact@v4
+        with:
+          name: KiterOS-Nano-Build-Outputs
+          path: |
+            dist/*.bin
+            dist/*.zip
+            dist/*.txt
+
+      - name: 10. Publish GitHub Release on Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: dist/KiterOS-Nano-${{ github.ref_name }}-size-report.txt
+          files: |
+            dist/KiterOS-Nano-${{ github.ref_name }}-firmware.bin
+            dist/KiterOS-Nano-${{ github.ref_name }}-filesystem.bin
+            dist/KiterOS-Nano-${{ github.ref_name }}-Arduino-IDE-Sketch.zip
+            dist/KiterOS-Nano-${{ github.ref_name }}-release.zip
+            dist/KiterOS-Nano-${{ github.ref_name }}-SHA256SUMS.txt
+            dist/KiterOS-Nano-${{ github.ref_name }}-size-report.txt
