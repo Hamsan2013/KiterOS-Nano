@@ -3,16 +3,17 @@
 
 #include <Arduino.h>
 
-#define KITEROS_VERSION       "0.1.0"
+#define KITEROS_VERSION       "0.2.0"
 #define DEFAULT_AP_SSID       "KiterOS-Nano"
 #define DEFAULT_AP_PASS       "kiteros8266"
 #define DEFAULT_AP_CHANNEL    1
 #define DEFAULT_MAX_CLIENTS   4
 
-#define MAX_UZIP_PACKAGE_SIZE (131072UL) // 128 KB max per package
-#define MAX_UZIP_ENTRY_SIZE   (65536UL)  // 64 KB max per single file
+// STRICT UZIP RULE: Every .uzip package must be <= 1,024 bytes (1 KB)
+#define MAX_UZIP_PACKAGE_SIZE (1024UL)
+#define MAX_UZIP_ENTRY_SIZE   (1024UL)
 #define MAX_PATH_LEN          96
-#define STREAM_CHUNK_SIZE     512
+#define STREAM_CHUNK_SIZE     256
 
 struct SystemConfig {
     char ssid[33];
