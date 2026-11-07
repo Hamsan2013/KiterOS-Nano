@@ -2,7 +2,6 @@
   function initFridgeWrapperRuntime() {
     const VERSION = "2.0.0";
 
-    // Parses app.frg boot wrapper files
     function parseFrgDescriptor(frgText) {
       const descriptor = {
         package: "com.kiteros.unnamed",
@@ -28,7 +27,6 @@
       return descriptor;
     }
 
-    // Wraps the game's index.html with the FRIDGE Runtime Bridge API
     function prepareHtmlPayload(rawHtml, descriptor, manifest) {
       const bridgeScript = `<script>
 window.Fridge = {
