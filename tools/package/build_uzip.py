@@ -5,8 +5,8 @@ import os
 import sys
 import zipfile
 
-MAX_PACKAGE_BYTES = 131072
-MAX_ENTRY_BYTES = 65536
+MAX_PACKAGE_BYTES = 1_048_576  # 1 MiB
+MAX_ENTRY_BYTES = 524_288       # 512 KiB
 
 def build_uzip(src_dir: str, out_file: str) -> None:
     manifest_path = os.path.join(src_dir, "manifest.json")
@@ -28,13 +28,13 @@ def build_uzip(src_dir: str, out_file: str) -> None:
                 if ".." in rel_path or rel_path.startswith("/"):
                     raise ValueError(f"Unsafe path: {rel_path}")
                 if os.path.getsize(full_path) > MAX_ENTRY_BYTES:
-                    raise ValueError(f"Entry {rel_path} exceeds 64 KB limit")
+                    raise ValueError(f"Entry {rel_path} exceeds 512 KB limit")
                 zf.write(full_path, rel_path, compress_type=zipfile.ZIP_STORED)
 
     total = os.path.getsize(out_file)
     if total > MAX_PACKAGE_BYTES:
         os.remove(out_file)
-        raise ValueError(f"Package size {total} B exceeds 128 KB limit")
+        raise ValueError(f"Package size {total} B exceeds 1 MiB limit")
     print(f"[OK] Built {out_file} ({total} bytes)")
 
 if __name__ == "__main__":
