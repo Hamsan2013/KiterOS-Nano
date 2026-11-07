@@ -1,26 +1,15 @@
-#ifndef KITEROS_UZIP_MANAGER_H
-#define KITEROS_UZIP_MANAGER_H
-
-#include <Arduino.h>
-#include <LittleFS.h>
-
-enum UzipResult {
-    UZIP_OK = 0,
-    UZIP_ERR_TOO_LARGE,
-    UZIP_ERR_BAD_MAGIC,
-    UZIP_ERR_UNSUPPORTED_METHOD,
-    UZIP_ERR_UNSAFE_PATH,
-    UZIP_ERR_ENTRY_TOO_LARGE,
-    UZIP_ERR_CRC_MISMATCH,
-    UZIP_ERR_NO_MANIFEST,
-    UZIP_ERR_INVALID_MANIFEST,
-    UZIP_ERR_FS_WRITE,
-    UZIP_ERR_CORRUPT_ARCHIVE
-};
-
-const char* uzipResultToString(UzipResult res);
-uint32_t crc32Update(uint32_t crc, const uint8_t *data, size_t len);
-UzipResult validateAndInstallUzip(const char *archivePath, char *installedAppId, size_t appIdMaxLen);
-bool uninstallAppPackage(const char *appId);
-
-#endif
+const char* uzipResultToString(UzipResult res) {
+    switch (res) {
+        case UZIP_OK:                     return "OK";
+        case UZIP_ERR_TOO_LARGE:          return "Violation: .uzip exceeds strict 1 KB (1024 bytes) limit";
+        case UZIP_ERR_BAD_MAGIC:          return "Invalid UZIP/ZIP header signature";
+        case UZIP_ERR_UNSUPPORTED_METHOD: return "Entries must use UZIP store wrapper (pre-gzipped files)";
+        case UZIP_ERR_UNSAFE_PATH:        return "Unsafe or traversal path detected";
+        case UZIP_ERR_ENTRY_TOO_LARGE:    return "Entry exceeds 1 KB limit";
+        case UZIP_ERR_CRC_MISMATCH:       return "CRC-32 integrity check failed";
+        case UZIP_ERR_NO_MANIFEST:        return "Missing manifest.json in package";
+        case UZIP_ERR_INVALID_MANIFEST:   return "Invalid manifest.json fields";
+        case UZIP_ERR_FS_WRITE:           return "LittleFS write error";
+        default:                          return "Corrupt .uzip archive";
+    }
+}
