@@ -1,6 +1,6 @@
 (function() {
   const OFFLINE_PREFIX = "kiter_pkg_";
-  const MAX_UZIP_BYTES = 1024; // Strict 1 KB UZIP rule
+  const MAX_UZIP_BYTES = 1024 * 1024; // 1 MB UZIP limit
   let boardOnline = false;
 
   const connBadge   = document.getElementById("conn-badge");
@@ -100,7 +100,7 @@
 
     if (games.length === 0) {
       const p = document.createElement("p");
-      p.textContent = "No games installed. Tap '+ Select .uzip' to install a 1 KB .uzip game.";
+      p.textContent = "No games installed. Tap '+ Select .uzip' to install a 1 MB .uzip game.";
       gamesList.appendChild(p);
     }
     if (apps.length === 0) {
@@ -165,7 +165,7 @@
   async function sendUzipToEsp(file) {
     if (!file) return;
     if (file.size > MAX_UZIP_BYTES) {
-      alert("Rejected! '" + file.name + "' is " + file.size + " bytes. UZIP rule requires <= 1024 bytes (1 KB).");
+      alert("Rejected! '" + file.name + "' is " + file.size + " bytes. UZIP rule requires <= 1048576 bytes (1 MB).");
       return;
     }
     const fd = new FormData();
@@ -189,7 +189,6 @@
     });
   }
 
-  // Downloads all uncompressed files + PNG icon from ESP8266 into phone storage
   async function cacheAppToPhone(appId) {
     try {
       const listRes = await fetch("/api/app/files?id=" + encodeURIComponent(appId));
@@ -205,9 +204,7 @@
 
       let iconDataUrl = "";
       const iconRes = await fetch("/api/app/icon?id=" + encodeURIComponent(appId));
-      if (iconRes.ok) {
-        iconDataUrl = await blobToDataURL(await iconRes.blob());
-      }
+      if (iconRes.ok) iconDataUrl = await blobToDataURL(await iconRes.blob());
 
       const manifest = JSON.parse(filesMap["manifest.json"]);
       localStorage.setItem(OFFLINE_PREFIX + appId, JSON.stringify({
@@ -273,7 +270,7 @@
   filePicker.addEventListener("change", e => {
     const f = e.target.files[0];
     if (!f) { fileInfo.textContent = "No .uzip file selected"; return; }
-    fileInfo.textContent = f.name + " (" + f.size + " bytes / max 1024 bytes)";
+    fileInfo.textContent = f.name + " (" + f.size + " bytes / max 1048576 bytes)";
     fileInfo.style.color = f.size <= MAX_UZIP_BYTES ? "#00e5ff" : "#ef4444";
   });
 
