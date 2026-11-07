@@ -129,7 +129,6 @@ static void appendDirFilesJson(const char *baseAppDir, const char *subDir, char 
     Dir d = LittleFS.openDir(curDir);
     while (d.next()) {
         String fn = d.fileName();
-        // Strip .gz suffix in file listing so browser requests logical filename
         if (fn.endsWith(".gz")) {
             fn = fn.substring(0, fn.length() - 3);
         }
@@ -201,7 +200,7 @@ static void handleUzipUploadData() {
 static void handleUzipUploadComplete() {
     if (uploadError || uploadedBytes == 0 || uploadedBytes > MAX_UZIP_PACKAGE_SIZE) {
         LittleFS.remove("/tmp/upload.uzip");
-        server.send(400, "application/json", "{\"error\":\"Rejected: .uzip file must be <= 1 KB (1024 bytes)\"}");
+        server.send(400, "application/json", "{\"error\":\"Rejected: .uzip file must be <= 1 MB (1,048,576 bytes)\"}");
         return;
     }
 
@@ -281,7 +280,7 @@ void initHttpServer(SystemConfig &cfg) {
     server.on("/api/config/wifi", HTTP_POST, handleApiWifiConfig);
     server.on("/api/restart", HTTP_POST, handleApiRestart);
 
-    // Automatic OS Captive Portal Triggers (Android, iOS/macOS, Windows, ConnectivityCheck)
+    // Automatic OS Captive Portal Triggers
     server.on("/generate_204", HTTP_GET, handleCaptiveRedirect);
     server.on("/gen_204", HTTP_GET, handleCaptiveRedirect);
     server.on("/hotspot-detect.html", HTTP_GET, handleCaptiveRedirect);
