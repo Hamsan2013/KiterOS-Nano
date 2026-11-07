@@ -2,6 +2,7 @@
 #include "sys_info.h"
 #include "storage.h"
 #include "uzip_manager.h"
+#include "embedded_web.h"
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <LittleFS.h>
@@ -13,6 +14,15 @@ static File uploadFile;
 static bool uploadError = false;
 static size_t uploadedBytes = 0;
 
+// Fallback 1x1 Cyan PNG icon if a package does not include icon.png
+static const uint8_t DEFAULT_ICON_PNG[] PROGMEM = {
+    0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+    0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53,
+    0xDE,0x00,0x00,0x00,0x0C,0x49,0x44,0x41,0x54,0x08,0xD7,0x63,0x60,0xF8,0xFF,0x1F,
+    0x00,0x02,0xFE,0x01,0xFE,0xA7,0xC2,0x89,0x89,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,
+    0x44,0xAE,0x42,0x60,0x82
+};
+
 static const char* getMimeType(const char *path) {
     if (strstr(path, ".html")) return "text/html";
     if (strstr(path, ".css"))  return "text/css";
@@ -20,16 +30,24 @@ static const char* getMimeType(const char *path) {
     if (strstr(path, ".json")) return "application/json";
     if (strstr(path, ".frg"))  return "text/plain";
     if (strstr(path, ".png"))  return "image/png";
+    if (strstr(path, ".svg"))  return "image/svg+xml";
     return "application/octet-stream";
 }
 
-static bool serveStaticFile(const char *fsPath) {
+// Sends a boot-squashed PROGMEM gzip asset so the UI is NEVER missing
+static void sendEmbeddedGzip(const char *mime, const uint8_t *data, size_t len) {
+    server.sendHeader("Content-Encoding", "gzip");
+    server.sendHeader("Cache-Control", "no-cache");
+    server.send_P(200, mime, (const char*)data, len);
+}
+
+static bool serveAppFileFromFS(const char *fsPath) {
     char gzPath[MAX_PATH_LEN];
     snprintf(gzPath, sizeof(gzPath), "%s.gz", fsPath);
     if (LittleFS.exists(gzPath)) {
         File f = LittleFS.open(gzPath, "r");
         if (f) {
-            server.sendHeader("Cache-Control", "max-age=300");
+            server.sendHeader("Cache-Control", "no-cache");
             server.streamFile(f, getMimeType(fsPath));
             f.close();
             return true;
@@ -47,9 +65,13 @@ static bool serveStaticFile(const char *fsPath) {
     return false;
 }
 
+// Force Android / iOS / Windows to automatically pop open the Captive Portal browser
 static void handleCaptiveRedirect() {
     server.sendHeader("Location", "http://192.168.4.1/", true);
-    server.send(302, "text/plain", "Redirecting to KiterOS Nano (http://192.168.4.1)");
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    server.send(302, "text/html",
+        "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='0;url=http://192.168.4.1/'></head>"
+        "<body><a href='http://192.168.4.1/'>Open KiterOS Nano</a></body></html>");
 }
 
 static void handleApiStatus() {
@@ -66,8 +88,18 @@ static void handleApiApps() {
     server.send(200, "application/json", buf);
 }
 
-// Streams an individual file from an installed app package:
-// GET /api/app/file?id=<appId>&path=<relativePath>
+static void handleApiAppIcon() {
+    if (!server.hasArg("id") || !isValidAppId(server.arg("id").c_str())) {
+        server.send_P(200, "image/png", (const char*)DEFAULT_ICON_PNG, sizeof(DEFAULT_ICON_PNG));
+        return;
+    }
+    char iconPath[MAX_PATH_LEN];
+    snprintf(iconPath, sizeof(iconPath), "/apps/%s/icon.png", server.arg("id").c_str());
+    if (!serveAppFileFromFS(iconPath)) {
+        server.send_P(200, "image/png", (const char*)DEFAULT_ICON_PNG, sizeof(DEFAULT_ICON_PNG));
+    }
+}
+
 static void handleApiAppFile() {
     if (!server.hasArg("id") || !server.hasArg("path")) {
         server.send(400, "application/json", "{\"error\":\"Missing id or path\"}");
@@ -81,12 +113,11 @@ static void handleApiAppFile() {
     }
     char fullPath[MAX_PATH_LEN];
     snprintf(fullPath, sizeof(fullPath), "/apps/%s/%s", id.c_str(), rel.c_str());
-    if (!serveStaticFile(fullPath)) {
+    if (!serveAppFileFromFS(fullPath)) {
         server.send(404, "application/json", "{\"error\":\"File not found\"}");
     }
 }
 
-// Lists all relative files inside /apps/<id> so the phone can download the entire app offline
 static void appendDirFilesJson(const char *baseAppDir, const char *subDir, char *out, size_t maxLen, size_t &pos, bool &first) {
     char curDir[MAX_PATH_LEN];
     if (subDir[0] == '\0') {
@@ -97,11 +128,16 @@ static void appendDirFilesJson(const char *baseAppDir, const char *subDir, char 
 
     Dir d = LittleFS.openDir(curDir);
     while (d.next()) {
+        String fn = d.fileName();
+        // Strip .gz suffix in file listing so browser requests logical filename
+        if (fn.endsWith(".gz")) {
+            fn = fn.substring(0, fn.length() - 3);
+        }
         char relPath[MAX_PATH_LEN];
         if (subDir[0] == '\0') {
-            strlcpy(relPath, d.fileName().c_str(), sizeof(relPath));
+            strlcpy(relPath, fn.c_str(), sizeof(relPath));
         } else {
-            snprintf(relPath, sizeof(relPath), "%s/%s", subDir, d.fileName().c_str());
+            snprintf(relPath, sizeof(relPath), "%s/%s", subDir, fn.c_str());
         }
         if (d.isDirectory()) {
             appendDirFilesJson(baseAppDir, relPath, out, maxLen, pos, first);
@@ -163,9 +199,9 @@ static void handleUzipUploadData() {
 }
 
 static void handleUzipUploadComplete() {
-    if (uploadError || uploadedBytes == 0) {
+    if (uploadError || uploadedBytes == 0 || uploadedBytes > MAX_UZIP_PACKAGE_SIZE) {
         LittleFS.remove("/tmp/upload.uzip");
-        server.send(400, "application/json", "{\"error\":\"Upload failed or exceeded 128 KB limit\"}");
+        server.send(400, "application/json", "{\"error\":\"Rejected: .uzip file must be <= 1 KB (1024 bytes)\"}");
         return;
     }
 
@@ -180,18 +216,13 @@ static void handleUzipUploadComplete() {
         return;
     }
 
-    char okBuf[96];
-    snprintf(okBuf, sizeof(okBuf), "{\"status\":\"installed\",\"id\":\"%s\"}", appId);
+    char okBuf[112];
+    snprintf(okBuf, sizeof(okBuf), "{\"status\":\"installed\",\"id\":\"%s\",\"bytes\":%u}", appId, (unsigned int)uploadedBytes);
     server.send(200, "application/json", okBuf);
 }
 
 static void handleApiUninstall() {
-    if (!server.hasArg("id")) {
-        server.send(400, "application/json", "{\"error\":\"Missing id\"}");
-        return;
-    }
-    String id = server.arg("id");
-    if (!uninstallAppPackage(id.c_str())) {
+    if (!server.hasArg("id") || !uninstallAppPackage(server.arg("id").c_str())) {
         server.send(400, "application/json", "{\"error\":\"Failed to uninstall package\"}");
         return;
     }
@@ -200,23 +231,20 @@ static void handleApiUninstall() {
 
 static void handleApiWifiConfig() {
     if (!server.hasArg("ssid") || !server.hasArg("password") || !activeCfg) {
-        server.send(400, "application/json", "{\"error\":\"Provide ssid and password (>=8 chars)\"}");
+        server.send(400, "application/json", "{\"error\":\"Missing ssid or password\"}");
         return;
     }
     String newSsid = server.arg("ssid");
     String newPass = server.arg("password");
     newSsid.trim();
     if (newSsid.length() < 3 || newSsid.length() > 31 || newPass.length() < 8 || newPass.length() > 63) {
-        server.send(400, "application/json", "{\"error\":\"Invalid SSID (3-31 chars) or password (8-63 chars)\"}");
+        server.send(400, "application/json", "{\"error\":\"SSID (3-31 chars) and Password (8-63 chars) required\"}");
         return;
     }
     strlcpy(activeCfg->ssid, newSsid.c_str(), sizeof(activeCfg->ssid));
     strlcpy(activeCfg->password, newPass.c_str(), sizeof(activeCfg->password));
-    if (!saveSystemConfig(*activeCfg)) {
-        server.send(500, "application/json", "{\"error\":\"Failed to save config\"}");
-        return;
-    }
-    server.send(200, "application/json", "{\"status\":\"saved\",\"note\":\"Restart board to apply new Wi-Fi settings\"}");
+    saveSystemConfig(*activeCfg);
+    server.send(200, "application/json", "{\"status\":\"saved\",\"note\":\"Restart ESP8266 to apply\"}");
 }
 
 static void handleApiRestart() {
@@ -228,24 +256,24 @@ static void handleApiRestart() {
 void initHttpServer(SystemConfig &cfg) {
     activeCfg = &cfg;
 
+    // Serve Main Launcher Interface directly from Boot Flash (PROGMEM) so it is NEVER missing
     server.on("/", HTTP_GET, []() {
-        if (!serveStaticFile("/launcher/index.html")) {
-            server.send(500, "text/plain", "KiterOS Nano: Missing /launcher/index.html on LittleFS");
-        }
+        sendEmbeddedGzip("text/html", EMBED_INDEX_HTML_GZ, EMBED_INDEX_HTML_GZ_LEN);
     });
     server.on("/style.css", HTTP_GET, []() {
-        if (!serveStaticFile("/launcher/style.css")) server.send(404, "text/plain", "Not found");
+        sendEmbeddedGzip("text/css", EMBED_STYLE_CSS_GZ, EMBED_STYLE_CSS_GZ_LEN);
     });
     server.on("/app.js", HTTP_GET, []() {
-        if (!serveStaticFile("/launcher/app.js")) server.send(404, "text/plain", "Not found");
+        sendEmbeddedGzip("application/javascript", EMBED_APP_JS_GZ, EMBED_APP_JS_GZ_LEN);
     });
     server.on("/runtime/fridge.js", HTTP_GET, []() {
-        if (!serveStaticFile("/runtime/fridge.js")) server.send(404, "text/plain", "Not found");
+        sendEmbeddedGzip("application/javascript", EMBED_FRIDGE_JS_GZ, EMBED_FRIDGE_JS_GZ_LEN);
     });
 
-    // API endpoints
+    // Package & System APIs
     server.on("/api/status", HTTP_GET, handleApiStatus);
     server.on("/api/apps", HTTP_GET, handleApiApps);
+    server.on("/api/app/icon", HTTP_GET, handleApiAppIcon);
     server.on("/api/app/file", HTTP_GET, handleApiAppFile);
     server.on("/api/app/files", HTTP_GET, handleApiAppBundleList);
     server.on("/api/install", HTTP_POST, handleUzipUploadComplete, handleUzipUploadData);
@@ -253,18 +281,18 @@ void initHttpServer(SystemConfig &cfg) {
     server.on("/api/config/wifi", HTTP_POST, handleApiWifiConfig);
     server.on("/api/restart", HTTP_POST, handleApiRestart);
 
-    // Captive Portal OS probes
+    // Automatic OS Captive Portal Triggers (Android, iOS/macOS, Windows, ConnectivityCheck)
     server.on("/generate_204", HTTP_GET, handleCaptiveRedirect);
     server.on("/gen_204", HTTP_GET, handleCaptiveRedirect);
     server.on("/hotspot-detect.html", HTTP_GET, handleCaptiveRedirect);
+    server.on("/library/test/success.html", HTTP_GET, handleCaptiveRedirect);
     server.on("/ncsi.txt", HTTP_GET, handleCaptiveRedirect);
     server.on("/connecttest.txt", HTTP_GET, handleCaptiveRedirect);
     server.on("/redirect", HTTP_GET, handleCaptiveRedirect);
+    server.on("/success.txt", HTTP_GET, handleCaptiveRedirect);
     server.onNotFound(handleCaptiveRedirect);
 
-    // Safe HTTP OTA endpoint (/api/ota)
     httpUpdater.setup(&server, "/api/ota");
-
     server.begin();
 }
 
