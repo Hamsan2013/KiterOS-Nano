@@ -42,7 +42,15 @@ jobs:
 
       - name: 7. Build 512 KiB LittleFS Filesystem (.bin)
         run: |
-          MKLITTLEFS=$(find ~/.platformio/packages/tool-mklittlefs -name mklittlefs | head -n 1)
+          # 1. Explicitly install mklittlefs tool via PlatformIO
+          pio pkg install --global --tool "platformio/tool-mklittlefs"
+
+          # 2. Locate the mklittlefs executable inside the packages directory
+          MKLITTLEFS=$(find ~/.platformio/packages -name mklittlefs -type f | head -n 1)
+          chmod +x "$MKLITTLEFS"
+
+          # 3. Create destination directory if needed and build filesystem image
+          mkdir -p firmware/.pio/build/nodemcuv2
           "$MKLITTLEFS" -c staging_fs -p 256 -b 8192 -s 524288 firmware/.pio/build/nodemcuv2/littlefs.bin
 
       - name: 8. Enforce 1 MiB Limit & Package Release Artifacts
