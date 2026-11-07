@@ -12,94 +12,176 @@
     <span class="logo">K</span>
     <div>
       <h1>KiterOS Nano</h1>
-      <small id="conn-badge">Connecting...</small>
+      <small id="conn-badge">Connecting to ESP8266...</small>
     </div>
   </div>
   <nav class="tabs">
-    <button class="tab active" data-tab="apps">Apps</button>
-    <button class="tab" data-tab="games">Games</button>
-    <button class="tab" data-tab="dev">FRIDGE Dev</button>
-    <button class="tab" data-tab="sys">System</button>
+    <button class="tab active" data-tab="apps" type="button">Apps</button>
+    <button class="tab" data-tab="games" type="button">Games</button>
+    <button class="tab" data-tab="studio" type="button">+ .ZIP Studio</button>
+    <button class="tab" data-tab="sys" type="button">System</button>
   </nav>
 </header>
 
 <main class="container">
-  <!-- APPS TAB -->
+  <!-- 1. APPLICATIONS TAB -->
   <section id="tab-apps" class="panel active">
     <div class="sec-head">
       <h2>Installed Applications</h2>
       <label class="btn primary">
-        + Install .uzip
-        <input type="file" id="uzip-input" accept=".uzip,.zip" hidden>
+        + Quick Install .zip/.uzip
+        <input type="file" id="quick-zip-input" accept=".uzip,.zip" hidden>
       </label>
     </div>
     <div id="apps-list" class="grid"></div>
   </section>
 
-  <!-- GAMES TAB -->
+  <!-- 2. GAMES TAB -->
   <section id="tab-games" class="panel">
     <div class="sec-head">
-      <h2>Installed Games</h2>
+      <h2>Installed HTML5 Games</h2>
     </div>
     <div id="games-list" class="grid"></div>
   </section>
 
-  <!-- DEVELOPER / FRIDGE SANDBOX TAB -->
-  <section id="tab-dev" class="panel">
+  <!-- 3. .ZIP / .UZIP APP STUDIO & UPLOADER TAB -->
+  <section id="tab-studio" class="panel">
     <div class="sec-head">
-      <h2>FRIDGE v1.0 Live Sandbox</h2>
-      <div>
-        <button id="btn-run-fridge" class="btn primary">Run Code</button>
+      <h2>Create or Upload .ZIP / .UZIP Package</h2>
+    </div>
+
+    <!-- Card A: Direct .zip / .uzip File Uploader -->
+    <div class="card">
+      <h3>Option A: Upload an Existing .zip or .uzip File</h3>
+      <p>Select a standard uncompressed (Store-mode) <code>.zip</code> or <code>.uzip</code> file containing <code>manifest.json</code>, <code>app.frg</code> (FRIDGE wrapper), and <code>index.html</code>.</p>
+      <div class="form-row">
+        <input type="file" id="direct-zip-file" accept=".zip,.uzip">
+        <button id="btn-upload-zip" class="btn primary" type="button">Upload &amp; Install to ESP8266</button>
       </div>
     </div>
-    <textarea id="fridge-editor" spellcheck="false">app "Hello KiterOS"
 
-remember score as 100
+    <!-- Card B: In-Browser HTML Game + FRIDGE Wrapper Packager -->
+    <div class="card">
+      <h3>Option B: Build HTML5 Game &amp; Package as .uzip Inside Browser</h3>
+      <p>Write or paste your complete HTML5 game below. The browser uses the <strong>FRIDGE wrapper (<code>app.frg</code>)</strong> to configure the package, bundles everything into a standard <code>.uzip</code> archive in memory, and installs it directly onto the ESP8266.</p>
 
-when app starts:
-    clear "#0b132b"
-    show "Welcome to KiterOS Nano!"
-    if score is greater than 50:
-        show "Score check: Excellent!"
-    otherwise:
-        show "Keep learning!"
-    end
-    call greet with "Developer"
-end
+      <div class="form-row">
+        <input type="text" id="build-id" placeholder="App ID (letters/numbers, e.g. cyberdodge)" value="cyberdodge">
+        <input type="text" id="build-name" placeholder="Display Title" value="Cyber Dodge HTML5">
+        <select id="build-type" class="select-box">
+          <option value="game">Game</option>
+          <option value="app">Application</option>
+        </select>
+      </div>
 
-create function greet with name:
-    show "Hello from FRIDGE, " + name + "!"
-end
-</textarea>
+      <label class="field-label" for="build-frg">FRIDGE APK-Style Boot Wrapper (<code>app.frg</code>):</label>
+      <textarea id="build-frg" class="code-box small-code" spellcheck="false">package "com.kiteros.cyberdodge"
+entrypoint "index.html"
+orientation "portrait"
+fullscreen true
+offline_ready true</textarea>
+
+      <label class="field-label" for="build-html">Main HTML5 Game / App Code (<code>index.html</code>):</label>
+      <textarea id="build-html" class="code-box" spellcheck="false"><!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Cyber Dodge</title>
+<style>
+  body { margin:0; background:#070b19; color:#00e5ff; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; overflow:hidden; }
+  .hud { display:flex; gap:20px; font-weight:bold; margin-bottom:8px; font-size:15px; }
+  canvas { background:#10172a; border:2px solid #00e5ff; border-radius:10px; touch-action:none; box-shadow:0 0 16px rgba(0,229,255,0.2); }
+  .hint { color:#94a3b8; font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+  <div class="hud">
+    <span>SCORE: <b id="sc">0</b></span>
+    <span>BEST: <b id="hi">0</b></span>
+  </div>
+  <canvas id="cv" width="290" height="340"></canvas>
+  <div class="hint">Drag finger or mouse left/right to dodge red blocks!</div>
+  <script>
+    const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+    const scEl = document.getElementById('sc'), hiEl = document.getElementById('hi');
+    let px = 130, py = 295, ex = 120, ey = -20, speed = 4, score = 0;
+    let best = Number(localStorage.getItem('cd_best') || 0);
+    hiEl.textContent = best;
+
+    cv.addEventListener('pointermove', e => {
+      const r = cv.getBoundingClientRect();
+      px = Math.max(0, Math.min(256, e.clientX - r.left - 17));
+    });
+
+    function loop() {
+      ctx.clearRect(0, 0, 290, 340);
+      ey += speed;
+      if (ey > 340) {
+        ey = -24;
+        ex = Math.floor(Math.random() * 260);
+        score++;
+        speed = Math.min(9.5, 4 + score * 0.15);
+        scEl.textContent = score;
+        if (score > best) { best = score; hiEl.textContent = best; localStorage.setItem('cd_best', best); }
+      }
+      // Collision check
+      if (px < ex + 26 && px + 34 > ex && py < ey + 26 && py + 24 > ey) {
+        score = 0; speed = 4; ey = -24; scEl.textContent = 0;
+      }
+      // Draw Player
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillRect(px, py, 34, 24);
+      // Draw Obstacle
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(ex, ey, 26, 26);
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</body>
+</html></textarea>
+
+      <div class="form-row" style="margin-top:12px">
+        <button id="btn-create-install" class="btn primary" type="button">Build .uzip &amp; Install to ESP8266</button>
+        <button id="btn-download-uzip" class="btn" type="button">Download .uzip File</button>
+        <button id="btn-preview-game" class="btn" type="button">Test / Preview Now</button>
+      </div>
+    </div>
   </section>
 
-  <!-- SYSTEM TAB -->
+  <!-- 4. SYSTEM & OTA TAB -->
   <section id="tab-sys" class="panel">
-    <h2>System & Storage Diagnostics</h2>
-    <div id="sys-metrics" class="card-list"></div>
-    <div class="card">
-      <h3>Wi-Fi SoftAP Settings</h3>
+    <div class="sec-head">
+      <h2>System &amp; Storage Diagnostics</h2>
+    </div>
+    <div id="sys-metrics" class="grid"></div>
+
+    <div class="card" style="margin-top:12px">
+      <h3>Wi-Fi Hotspot Configuration</h3>
       <div class="form-row">
-        <input type="text" id="cfg-ssid" placeholder="Hotspot SSID (3-31 chars)">
+        <input type="text" id="cfg-ssid" placeholder="New Hotspot SSID (3-31 chars)">
         <input type="password" id="cfg-pass" placeholder="New WPA2 Password (>=8 chars)">
-        <button id="btn-save-wifi" class="btn">Save Wi-Fi</button>
+        <button id="btn-save-wifi" class="btn primary" type="button">Save Wi-Fi</button>
       </div>
-      <div class="form-row" style="margin-top:10px">
-        <button id="btn-restart" class="btn danger">Restart ESP8266</button>
+      <div class="form-row" style="margin-top:12px">
+        <a href="/api/ota" class="btn" style="text-decoration:none">Open Firmware .BIN OTA Updater</a>
+        <button id="btn-restart" class="btn danger" type="button">Restart ESP8266</button>
       </div>
     </div>
   </section>
 </main>
 
-<!-- APPLICATION & GAME EXECUTION MODAL -->
+<!-- FULLSCREEN HTML5 GAME & APP RUNNER MODAL -->
 <div id="runner-modal" class="modal hidden">
   <div class="modal-bar">
-    <strong id="runner-title">FRIDGE Runtime</strong>
-    <button id="btn-close-runner" class="btn danger">Exit</button>
+    <div>
+      <strong id="runner-title">Running App</strong>
+      <small id="runner-meta" style="color:#94a3b8;margin-left:8px"></small>
+    </div>
+    <button id="btn-close-runner" class="btn danger" type="button">Exit</button>
   </div>
-  <div id="fridge-ui" class="fridge-ui"></div>
-  <canvas id="fridge-canvas" width="320" height="360"></canvas>
-  <pre id="fridge-console" class="fridge-console"></pre>
+  <iframe id="app-iframe" sandbox="allow-scripts allow-same-origin allow-modals"></iframe>
 </div>
 
 <script src="/runtime/fridge.js"></script>
