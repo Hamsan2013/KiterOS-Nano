@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>KiterOS Nano</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">K</span>
+    <div>
+      <h1>KiterOS Nano</h1>
+      <small id="conn-badge">Connecting...</small>
+    </div>
+  </div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="apps">Apps</button>
+    <button class="tab" data-tab="games">Games</button>
+    <button class="tab" data-tab="dev">FRIDGE Dev</button>
+    <button class="tab" data-tab="sys">System</button>
+  </nav>
+</header>
+
+<main class="container">
+  <!-- APPS TAB -->
+  <section id="tab-apps" class="panel active">
+    <div class="sec-head">
+      <h2>Installed Applications</h2>
+      <label class="btn primary">
+        + Install .uzip
+        <input type="file" id="uzip-input" accept=".uzip,.zip" hidden>
+      </label>
+    </div>
+    <div id="apps-list" class="grid"></div>
+  </section>
+
+  <!-- GAMES TAB -->
+  <section id="tab-games" class="panel">
+    <div class="sec-head">
+      <h2>Installed Games</h2>
+    </div>
+    <div id="games-list" class="grid"></div>
+  </section>
+
+  <!-- DEVELOPER / FRIDGE SANDBOX TAB -->
+  <section id="tab-dev" class="panel">
+    <div class="sec-head">
+      <h2>FRIDGE v1.0 Live Sandbox</h2>
+      <div>
+        <button id="btn-run-fridge" class="btn primary">Run Code</button>
+      </div>
+    </div>
+    <textarea id="fridge-editor" spellcheck="false">app "Hello KiterOS"
+
+remember score as 100
+
+when app starts:
+    clear "#0b132b"
+    show "Welcome to KiterOS Nano!"
+    if score is greater than 50:
+        show "Score check: Excellent!"
+    otherwise:
+        show "Keep learning!"
+    end
+    call greet with "Developer"
+end
+
+create function greet with name:
+    show "Hello from FRIDGE, " + name + "!"
+end
+</textarea>
+  </section>
+
+  <!-- SYSTEM TAB -->
+  <section id="tab-sys" class="panel">
+    <h2>System & Storage Diagnostics</h2>
+    <div id="sys-metrics" class="card-list"></div>
+    <div class="card">
+      <h3>Wi-Fi SoftAP Settings</h3>
+      <div class="form-row">
+        <input type="text" id="cfg-ssid" placeholder="Hotspot SSID (3-31 chars)">
+        <input type="password" id="cfg-pass" placeholder="New WPA2 Password (>=8 chars)">
+        <button id="btn-save-wifi" class="btn">Save Wi-Fi</button>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <button id="btn-restart" class="btn danger">Restart ESP8266</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- APPLICATION & GAME EXECUTION MODAL -->
+<div id="runner-modal" class="modal hidden">
+  <div class="modal-bar">
+    <strong id="runner-title">FRIDGE Runtime</strong>
+    <button id="btn-close-runner" class="btn danger">Exit</button>
+  </div>
+  <div id="fridge-ui" class="fridge-ui"></div>
+  <canvas id="fridge-canvas" width="320" height="360"></canvas>
+  <pre id="fridge-console" class="fridge-console"></pre>
+</div>
+
+<script src="/runtime/fridge.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
