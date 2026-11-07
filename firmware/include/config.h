@@ -9,9 +9,9 @@
 #define DEFAULT_AP_CHANNEL    1
 #define DEFAULT_MAX_CLIENTS   4
 
-// STRICT UZIP RULE: Every .uzip package must be <= 1,024 bytes (1 KB)
-#define MAX_UZIP_PACKAGE_SIZE (1024UL)
-#define MAX_UZIP_ENTRY_SIZE   (1024UL)
+// UZIP rule: Each .uzip package must be <= 1 MiB (1,048,576 bytes)
+#define MAX_UZIP_PACKAGE_SIZE (1024UL * 1024UL)
+#define MAX_UZIP_ENTRY_SIZE   (512UL * 1024UL)
 #define MAX_PATH_LEN          96
 #define STREAM_CHUNK_SIZE     256
 
